@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
-import type { MovieSession } from '../types';
+import { type MovieSession } from '../types';
 
 export default function Booking() {
   const { id } = useParams();

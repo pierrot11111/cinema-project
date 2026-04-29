@@ -1,126 +1,147 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import type { MovieSession } from '../types';
+import { collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { type Movie, type MovieSession } from '../types';
 
 export default function AdminPanel() {
+  const [movies, setMovies] = useState<Movie[]>([]);
   const [sessions, setSessions] = useState<MovieSession[]>([]);
-  const [title, setTitle] = useState('');
-  const [price, setPrice] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [hall, setHall] = useState('Зал 1');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
-  const [editId, setEditId] = useState<string | null>(null);
+  
+  // Состояния модалок
+  const [showMovieForm, setShowMovieForm] = useState(false);
+  const [showSessionForm, setShowSessionForm] = useState(false);
+  const [showSeatsEditor, setShowSeatsEditor] = useState(false);
+  
+  // Данные форм
+  const [currentMovie, setCurrentMovie] = useState<Partial<Movie> | null>(null);
+  const [activeMovieId, setActiveMovieId] = useState<string | null>(null);
+  const [activeSession, setActiveSession] = useState<MovieSession | null>(null);
 
-  // Завантаження сеансів
+  // Поля нового сеанса
+  const [sDate, setSDate] = useState('');
+  const [sTime, setSTime] = useState('');
+  const [sPrice, setSPrice] = useState('');
+  const [sHall, setSHall] = useState('Зал 1');
+
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "sessions"), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as MovieSession[];
-      setSessions(data);
+    const unsubMovies = onSnapshot(collection(db, "movies"), (snap) => {
+      setMovies(snap.docs.map(d => ({ id: d.id, ...d.data() } as Movie)));
     });
-    return () => unsubscribe();
+    const unsubSessions = onSnapshot(collection(db, "sessions"), (snap) => {
+      setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() } as MovieSession)));
+    });
+    return () => { unsubMovies(); unsubSessions(); };
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSaveMovie = async (e: React.FormEvent) => {
     e.preventDefault();
-    const sessionData = {
-      movieTitle: title,
-      price: Number(price),
-      image: imageUrl || "https://via.placeholder.com/300x450?text=No+Poster",
-      hall,
-      date,
-      time,
-    };
-
-    try {
-      if (editId) {
-        await updateDoc(doc(db, "sessions", editId), sessionData);
-        setEditId(null);
-      } else {
-        await addDoc(collection(db, "sessions"), sessionData);
-      }
-      resetForm();
-    } catch (err) {
-      alert("Помилка при збереженні!");
+    if (currentMovie?.id) {
+      await updateDoc(doc(db, "movies", currentMovie.id), currentMovie);
+    } else {
+      await addDoc(collection(db, "movies"), { ...currentMovie, bookedSeats: [] });
     }
+    setShowMovieForm(false);
   };
 
-  const resetForm = () => {
-    setTitle(''); setPrice(''); setImageUrl(''); setDate(''); setTime(''); setEditId(null);
+  const handleAddSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await addDoc(collection(db, "sessions"), {
+      movieId: activeMovieId,
+      date: sDate,
+      time: sTime,
+      price: Number(sPrice),
+      hall: sHall,
+      bookedSeats: []
+    });
+    setShowSessionForm(false);
   };
 
-  const handleEdit = (s: MovieSession) => {
-    setEditId(s.id);
-    setTitle(s.movieTitle);
-    setPrice(String(s.price));
-    setImageUrl(s.image);
-    setHall(s.hall);
-    setDate(s.date);
-    setTime(s.time);
-  };
+  // Функция переключения статуса места админом
+  const toggleSeatAdmin = async (seatIndex: number) => {
+    if (!activeSession) return;
+    const currentBooked = activeSession.bookedSeats || [];
+    const newBooked = currentBooked.includes(seatIndex)
+      ? currentBooked.filter(s => s !== seatIndex)
+      : [...currentBooked, seatIndex];
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Видалити цей сеанс?")) {
-      await deleteDoc(doc(db, "sessions", id));
-    }
+    await updateDoc(doc(db, "sessions", activeSession.id), { bookedSeats: newBooked });
+    // Обновляем локальное состояние, чтобы интерфейс сразу среагировал
+    setActiveSession({ ...activeSession, bookedSeats: newBooked });
   };
 
   return (
-    <div className="p-4 max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-      
-      {/* ФОРМА ДОДАВАННЯ/РЕДАГУВАННЯ */}
-      <div className="lg:col-span-1">
-        <form onSubmit={handleSubmit} className="sticky top-4 bg-m-dark p-6 rounded-2xl border border-gray-800 space-y-4">
-          <h2 className="text-xl font-bold text-m-accent">
-            {editId ? "Редагувати сеанс" : "Новий сеанс"}
-          </h2>
-          
-          <input className="w-full p-2 rounded bg-m-black border border-gray-700" placeholder="Назва фільму" value={title} onChange={e => setTitle(e.target.value)} required />
-          
-          <div className="grid grid-cols-2 gap-2">
-            <input className="p-2 rounded bg-m-black border border-gray-700" type="number" placeholder="Ціна" value={price} onChange={e => setPrice(e.target.value)} required />
-            <select className="p-2 rounded bg-m-black border border-gray-700" value={hall} onChange={e => setHall(e.target.value)}>
-              <option>Зал 1</option>
-              <option>Зал 2 (IMAX)</option>
-              <option>VIP Зал</option>
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <input className="p-2 rounded bg-m-black border border-gray-700 text-sm" type="date" value={date} onChange={e => setDate(e.target.value)} required />
-            <input className="p-2 rounded bg-m-black border border-gray-700 text-sm" type="time" value={time} onChange={e => setTime(e.target.value)} required />
-          </div>
-
-          <input className="w-full p-2 rounded bg-m-black border border-gray-700" placeholder="URL постера" value={imageUrl} onChange={e => setImageUrl(e.target.value)} />
-
-          <button className="w-full bg-m-accent text-black font-bold py-2 rounded-xl hover:brightness-110">
-            {editId ? "Оновити" : "Додати сеанс"}
-          </button>
-          {editId && <button type="button" onClick={resetForm} className="w-full text-gray-400 text-sm">Скасувати</button>}
-        </form>
+    <div className="p-8 max-w-7xl mx-auto">
+      <div className="flex justify-between items-center mb-10">
+        <h1 className="text-3xl font-black uppercase">Управління кінотеатром</h1>
+        <button onClick={() => { setCurrentMovie({}); setShowMovieForm(true); }} className="bg-m-accent text-black px-6 py-3 rounded-xl font-bold">+ Додати фільм</button>
       </div>
 
-      {/* СПИСОК СЕАНСІВ */}
-      <div className="lg:col-span-2">
-        <h2 className="text-xl font-bold mb-4">Активні сеанси</h2>
-        <div className="space-y-3">
-          {sessions.map(s => (
-            <div key={s.id} className="bg-m-dark p-4 rounded-xl border border-gray-800 flex items-center gap-4">
-              <img src={s.image} className="w-16 h-20 object-cover rounded" alt="" />
-              <div className="flex-1">
-                <h3 className="font-bold">{s.movieTitle}</h3>
-                <p className="text-xs text-gray-400">{s.date} | {s.time} | {s.hall}</p>
-                <p className="text-m-accent font-bold">{s.price} грн</p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <button onClick={() => handleEdit(s)} className="text-blue-400 text-sm hover:underline">Змінити</button>
-                <button onClick={() => handleDelete(s.id)} className="text-red-500 text-sm hover:underline">Видалити</button>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {movies.map(movie => (
+          <div key={movie.id} className="bg-m-dark rounded-3xl border border-gray-800 overflow-hidden flex flex-col">
+            <img src={movie.image} className="h-40 w-full object-cover opacity-40" alt="" />
+            <div className="p-6 flex-grow">
+              <h3 className="text-xl font-bold mb-4">{movie.title}</h3>
+              
+              <p className="text-xs text-gray-500 uppercase font-bold mb-2">Активні сеанси (тисніть для місць):</p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                {sessions.filter(s => s.movieId === movie.id).map(s => (
+                  <button 
+                    key={s.id} 
+                    onClick={() => { setActiveSession(s); setShowSeatsEditor(true); }}
+                    className="bg-m-black border border-gray-700 px-3 py-1 rounded-lg text-sm hover:border-m-accent text-gray-300"
+                  >
+                    {s.time}
+                  </button>
+                ))}
+                <button onClick={() => { setActiveMovieId(movie.id); setShowSessionForm(true); }} className="px-3 py-1 rounded-lg text-sm border border-dashed border-gray-600 text-gray-500 hover:text-white">+</button>
               </div>
             </div>
-          ))}
-        </div>
+
+            <div className="p-6 pt-0 flex gap-2">
+              <button onClick={() => { setCurrentMovie(movie); setShowMovieForm(true); }} className="flex-1 bg-gray-800 py-2 rounded-lg text-sm">Змінити</button>
+              <button onClick={async () => { if(confirm('Видалити?')) await deleteDoc(doc(db, "movies", movie.id)) }} className="flex-1 bg-red-900/20 text-red-500 py-2 rounded-lg text-sm">Видалити</button>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* Модалка редактирования МЕСТ */}
+      {showSeatsEditor && activeSession && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+          <div className="bg-m-dark border border-gray-800 p-8 rounded-3xl max-w-2xl w-full">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-m-accent uppercase">Редактор місць</h2>
+                <p className="text-gray-400 text-sm">{activeSession.date} | {activeSession.time} | {activeSession.hall}</p>
+              </div>
+              <button onClick={() => setShowSeatsEditor(false)} className="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+
+            <div className="w-full h-1 bg-gray-800 mb-10 rounded-full shadow-[0_10px_20px_rgba(255,255,255,0.05)]"></div>
+
+            <div className="grid grid-cols-8 gap-3 justify-center mb-8">
+              {Array.from({ length: 40 }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => toggleSeatAdmin(i)}
+                  className={`w-8 h-8 rounded-t-lg transition-colors ${
+                    activeSession.bookedSeats?.includes(i) ? 'bg-red-600' : 'bg-gray-700 hover:bg-m-accent/50'
+                  }`}
+                />
+              ))}
+            </div>
+            
+            <div className="flex gap-4 text-xs uppercase font-bold text-gray-500 justify-center">
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600 rounded-sm"></div> Зайнято</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-gray-700 rounded-sm"></div> Вільно</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалки фильма и сеанса (оставляем старые или подключаем те, что были в предыдущем шаге) */}
+      {/* ... здесь формы из прошлого сообщения ... */}
     </div>
   );
 }
