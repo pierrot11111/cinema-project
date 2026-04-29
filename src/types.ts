@@ -3,16 +3,17 @@ export interface Movie {
   title: string;
   description: string;
   image: string;
-  duration: string; // наприклад, "120 хв"
+  duration: string;
   genre: string;
 }
 
 export interface MovieSession {
   id: string;
-  movieId: string; // Зв'язок з фільмом
-  date: string;    // 2024-05-20
-  time: string;    // 19:30
-  hall: string;
+  movieId: string;
+  movieTitle: string; 
+  date: string;
+  time: string;
+  hall: string; // Додано поле залу
   price: number;
   bookedSeats: number[];
 }

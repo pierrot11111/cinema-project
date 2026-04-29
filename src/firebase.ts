@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore"; // Добавили этот импорт
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSgFM40vWN5tbb_0VAQ7wysQ2Bo9FhcZQ",
@@ -12,4 +12,4 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app); // Теперь getFirestore будет работать
+export const db = getFirestore(app);

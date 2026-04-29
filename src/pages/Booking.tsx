@@ -1,105 +1,111 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
-import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { type MovieSession } from '../types';
 
 export default function Booking() {
-  const { id } = useParams();
+  const { sessionId } = useParams();
   const navigate = useNavigate();
-  const [session, setSessions] = useState<MovieSession | null>(null);
-  const [bookedSeats, setBookedSeats] = useState<number[]>([]);
+  const [session, setSession] = useState<MovieSession | null>(null);
   const [selectedSeats, setSelectedSeats] = useState<number[]>([]);
 
-  // Эмуляция мест в зале (например, 40 мест)
-  const totalSeats = 40;
-
   useEffect(() => {
-    if (!id) return;
-    
-    // Получаем данные о сеансе и забронированных местах в реальном времени
-    const unsubscribe = onSnapshot(doc(db, "sessions", id), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data() as MovieSession;
-        setSessions(data);
-        setBookedSeats(docSnap.data().bookedSeats || []);
+    if (!sessionId) return;
+    const unsub = onSnapshot(doc(db, "sessions", sessionId), (snap) => {
+      if (snap.exists()) {
+        setSession({ id: snap.id, ...snap.data() } as MovieSession);
       }
     });
+    return () => unsub();
+  }, [sessionId]);
 
-    return () => unsubscribe();
-  }, [id]);
+  const handleBook = async () => {
+    if (!session || selectedSeats.length === 0) return;
 
-  const toggleSeat = (seatIndex: number) => {
-    if (bookedSeats.includes(seatIndex)) return;
-    setSelectedSeats(prev => 
-      prev.includes(seatIndex) ? prev.filter(s => s !== seatIndex) : [...prev, seatIndex]
-    );
+    const newBooked = [...(session.bookedSeats || []), ...selectedSeats];
+    await updateDoc(doc(db, "sessions", session.id), {
+      bookedSeats: newBooked
+    });
+
+    alert('Квитки успішно заброньовано!');
+    navigate('/');
   };
 
-  const handleBuy = async () => {
-    if (selectedSeats.length === 0 || !id) return;
-    
-    const newBookedSeats = [...bookedSeats, ...selectedSeats];
-    try {
-      await updateDoc(doc(db, "sessions", id), {
-        bookedSeats: newBookedSeats
-      });
-      alert("Квитки успішно куплені!");
-      setSelectedSeats([]);
-      navigate('/');
-    } catch (error) {
-      alert("Помилка при купівлі");
-    }
-  };
-
-  if (!session) return <div className="p-10 text-center">Завантаження...</div>;
+  if (!session) return <div className="p-20 text-center">Завантаження залу...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 flex flex-col items-center">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-m-accent uppercase">{session.movieTitle}</h2>
-        <p className="text-gray-400">{session.date} о {session.time} — {session.hall}</p>
-      </div>
-
-      {/* Экран */}
-      <div className="w-full h-2 bg-gray-700 rounded-full mb-12 shadow-[0_15px_30px_rgba(255,255,255,0.1)] flex items-center justify-center text-[10px] text-gray-500 uppercase tracking-[0.5em]">
-        Екран
-      </div>
-
-      {/* Сетка мест */}
-      <div className="grid grid-cols-8 gap-3 mb-10">
-        {Array.from({ length: totalSeats }).map((_, i) => {
-          const isBooked = bookedSeats.includes(i);
-          const isSelected = selectedSeats.includes(i);
-          
-          return (
-            <button
-              key={i}
-              onClick={() => toggleSeat(i)}
-              disabled={isBooked}
-              className={`w-8 h-8 rounded-t-lg transition-all ${
-                isBooked ? 'bg-gray-800 cursor-not-allowed' : 
-                isSelected ? 'bg-m-accent scale-110 shadow-lg' : 'bg-gray-600 hover:bg-gray-400'
-              }`}
-              title={`Місце ${i + 1}`}
-            />
-          );
-        })}
-      </div>
-
-      {/* Панель оплаты */}
-      <div className="w-full bg-m-dark p-6 rounded-2xl border border-gray-800 flex justify-between items-center">
-        <div>
-          <p className="text-sm text-gray-400">Обрано місць: {selectedSeats.length}</p>
-          <p className="text-2xl font-bold">{selectedSeats.length * session.price} ГРН</p>
+    <div className="min-h-screen bg-m-black text-white p-10">
+      <div className="max-w-4xl mx-auto">
+        
+        {/* Шапка бронювання */}
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-black uppercase tracking-tighter mb-4">{session.movieTitle}</h2>
+          <div className="flex justify-center gap-6 text-sm font-bold uppercase tracking-widest text-gray-400">
+            <span className="flex items-center gap-2">📅 {session.date}</span>
+            <span className="flex items-center gap-2">🕒 {session.time}</span>
+            <span className="text-m-accent border border-m-accent/30 px-3 py-1 rounded-lg">🏛️ {session.hall}</span>
+          </div>
         </div>
-        <button 
-          onClick={handleBuy}
-          disabled={selectedSeats.length === 0}
-          className="bg-m-accent text-black px-8 py-3 rounded-xl font-black uppercase disabled:opacity-50 disabled:grayscale"
-        >
-          Купити квитки
-        </button>
+
+        {/* Екран */}
+        <div className="relative mb-20">
+          <div className="w-full h-2 bg-gradient-to-b from-m-accent to-transparent rounded-full blur-sm opacity-50" />
+          <div className="text-center text-[10px] text-gray-600 uppercase tracking-[1em] mt-4">Екран</div>
+        </div>
+
+        {/* Схема залу (40 місць: 5 рядів по 8) */}
+        <div className="grid grid-cols-8 gap-4 max-w-md mx-auto mb-16">
+          {Array.from({ length: 40 }).map((_, i) => {
+            const isBooked = session.bookedSeats?.includes(i);
+            const isSelected = selectedSeats.includes(i);
+
+            return (
+              <button
+                key={i}
+                disabled={isBooked}
+                onClick={() => {
+                  setSelectedSeats(prev => 
+                    prev.includes(i) ? prev.filter(s => s !== i) : [...prev, i]
+                  );
+                }}
+                className={`h-10 rounded-t-xl transition-all ${
+                  isBooked ? 'bg-red-900/40 cursor-not-allowed' : 
+                  isSelected ? 'bg-m-accent scale-110 shadow-[0_0_15px_rgba(226,254,0,0.5)]' : 
+                  'bg-gray-800 hover:bg-gray-700'
+                }`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Легенда та підсумок */}
+        <div className="bg-m-dark p-8 rounded-3xl border border-gray-800 flex flex-col md:flex-row justify-between items-center gap-8">
+          <div className="flex gap-6 text-xs uppercase font-bold tracking-widest">
+            <div className="flex items-center gap-2"><div className="w-4 h-4 bg-gray-800 rounded-sm"></div> Вільно</div>
+            <div className="flex items-center gap-2"><div className="w-4 h-4 bg-m-accent rounded-sm"></div> Ваше місце</div>
+            <div className="flex items-center gap-2"><div className="w-4 h-4 bg-red-900/40 rounded-sm"></div> Зайнято</div>
+          </div>
+
+          <div className="text-right">
+            <p className="text-gray-500 uppercase text-[10px] font-bold mb-1">До сплати</p>
+            <h3 className="text-4xl font-black text-m-accent">
+              {selectedSeats.length * session.price} ₴
+            </h3>
+          </div>
+
+          <button
+            disabled={selectedSeats.length === 0}
+            onClick={handleBook}
+            className={`px-12 py-4 rounded-2xl font-black uppercase tracking-tighter transition-all ${
+              selectedSeats.length > 0 
+              ? 'bg-m-accent text-black hover:scale-105 active:scale-95' 
+              : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+            }`}
+          >
+            Купити квитки
+          </button>
+        </div>
       </div>
     </div>
   );
