@@ -3,8 +3,11 @@ export interface Movie {
   title: string;
   description: string;
   image: string;
-  duration: string;
-  genre: string;
+  duration: string;         // Будет храниться как "120 хв"
+  language: string;         // "Українська" или "Англійська"
+  rating: string;           // Рейтинг IMDb
+  genre: string;            // Жанр
+  ageRestriction: string;   // "16+", "18+" и т.д.
 }
 
 export interface MovieSession {
@@ -13,7 +16,7 @@ export interface MovieSession {
   movieTitle: string; 
   date: string;
   time: string;
-  hall: string; // Додано поле залу
+  hall: string;
   price: number;
   bookedSeats: number[];
 }
